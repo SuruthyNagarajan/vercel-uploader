@@ -7,14 +7,10 @@ import { Buffer } from 'buffer';
 
 export const config = {
   api: {
-    // This is crucial. We disable the default body parser so that formidable
-    // can handle 'multipart/form-data' requests.
     bodyParser: false,
   },
 };
 
-// Helper function to manually parse a JSON body from a request stream.
-// This is necessary because bodyParser is disabled for all requests.
 function parseJsonBody(req: NextApiRequest): Promise<any> {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -24,10 +20,8 @@ function parseJsonBody(req: NextApiRequest): Promise<any> {
     req.on('end', () => {
       try {
         if (body === '') {
-          // Resolve with an empty object if there's no body content
           resolve({});
         } else {
-          // Parse the full JSON string and resolve
           resolve(JSON.parse(body));
         }
       } catch (e) {
@@ -45,8 +39,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const db = client.db("image-uploader-db");
   const collection = db.collection("uploads");
 
-  const MAX_MONGO_SIZE = 16 * 1024 * 1024; // 16 MB in bytes
-
+  const MAX_MONGO_SIZE = 16 * 1024 * 1024;
   switch (req.method) {
     case 'POST':
       try {
@@ -58,7 +51,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         let resumeData: Buffer | null = null;
         
         if (isFormData) {
-          // Case 1: Handle multipart/form-data (used by your webpage)
           const form = formidable({});
           const [fields, files] = await form.parse(req) as [any, any];
 
@@ -72,7 +64,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             resumeData = await fs.readFile(resumeFile.filepath);
           }
         } else if (isJson) {
-          // Case 2: Handle raw JSON body (used by your Postman request)
           const body = await parseJsonBody(req);
           
           if (body.photo) {
@@ -92,16 +83,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
           }
         } else {
-          // Handle unrecognized Content-Type
           return res.status(415).json({ message: `Unsupported Content-Type: ${contentType}` });
         }
-
-        // --- Common logic for both cases starts here ---
         if (!photoData && !resumeData) {
           return res.status(400).json({ message: "At least one file (photo or resume) is required." });
         }
-        
-        // Check file sizes against MongoDB's 16MB limit
         if (photoData && photoData.length > MAX_MONGO_SIZE) {
           return res.status(413).json({ message: "Photo file size exceeds the 16 MB limit." });
         }
@@ -131,8 +117,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         res.status(500).json({ message: "Failed to upload files and save data." });
       }
       break;
-    
-    // ... (rest of the cases are unchanged)
     case 'GET':
       try {
         const files = await collection.find({}).toArray();
