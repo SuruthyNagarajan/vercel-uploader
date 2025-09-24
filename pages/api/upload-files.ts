@@ -1,19 +1,13 @@
 import formidable, { File } from "formidable";
-import { v2 as cloudinary } from "cloudinary";
 import clientPromise from "../../lib/mongodb";
 import { NextApiRequest, NextApiResponse } from "next";
+import fs from 'fs/promises';
 
 export const config = {
   api: {
     bodyParser: false,
   },
 };
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") {
@@ -32,29 +26,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ message: "Both photo and resume files are required." });
     }
 
-    const photoResult = await cloudinary.uploader.upload(photoFile.filepath as string, {
-      folder: "profile-photos",
-      resource_type: "image",
-    });
+    // Read file content from the temporary file path
+    const photoBuffer = await fs.readFile(photoFile.filepath);
+    const resumeBuffer = await fs.readFile(resumeFile.filepath);
 
-    const resumeResult = await cloudinary.uploader.upload(resumeFile.filepath as string, {
-      folder: "resumes",
-      resource_type: "raw",
-    });
+    // Convert the Buffer to a base64 string
+    const photoBase64 = photoBuffer.toString('base64');
+    const resumeBase64 = resumeBuffer.toString('base64');
 
     const client = await clientPromise;
     const db = client.db("image-uploader-db");
 
     const result = await db.collection("uploads").insertOne({
-      photoUrl: photoResult.secure_url,
-      resumeUrl: resumeResult.secure_url,
+      // Save the base64 strings directly in MongoDB
+      photoBase64: photoBase64,
+      resumeBase64: resumeBase64,
       createdAt: new Date(),
     });
 
     res.status(200).json({
+      // Return a message and DB ID, but no URLs
       message: "Files uploaded and data saved!",
-      photoUrl: photoResult.secure_url,
-      resumeUrl: resumeResult.secure_url,
       dbId: result.insertedId,
     });
   } catch (error) {

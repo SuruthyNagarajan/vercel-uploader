@@ -35,7 +35,7 @@ export default function Home() {
           'Content-Type': 'multipart/form-data',
         },
       });
-      setMessage(`Success! Photo URL: ${response.data.photoUrl}, Resume URL: ${response.data.resumeUrl}`);
+      setMessage(`Success! ${response.data.message}`);
     } catch (error) {
       setMessage('Upload failed.');
       console.error(error);
