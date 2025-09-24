@@ -1,16 +1,13 @@
+import formidable, { File } from "formidable";
 import clientPromise from "../../lib/mongodb";
 import { NextApiRequest, NextApiResponse } from "next";
 import { ObjectId } from 'mongodb';
+import fs from 'fs/promises';
 import { Buffer } from 'buffer';
 
 export const config = {
   api: {
-    // Note: bodyParser is true by default in Next.js, 
-    // so removing it from config is a valid way to enable it.
-    // Explicitly enabling it:
-    // bodyParser: {
-    //   sizeLimit: '4mb', // Optional: configure size limit if needed
-    // },
+    bodyParser: false, // Keep this for formidable to work
   },
 };
 
@@ -21,37 +18,72 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   switch (req.method) {
     case 'POST':
-      // The API now expects a JSON body with a 'resume' field
       try {
-        const { resume } = req.body;
+        // First, check if the Content-Type is multipart/form-data
+        const contentType = req.headers['content-type'] || '';
+        const isFormData = contentType.includes('multipart/form-data');
 
-        if (!resume) {
-          return res.status(400).json({ message: "Resume file is required." });
+        let photoData: string | Buffer | null = null;
+        let resumeData: string | Buffer | null = null;
+
+        if (isFormData) {
+          // Handle form-data upload using formidable
+          const form = formidable({});
+          const [fields, files] = await form.parse(req) as [any, any];
+
+          const photoFile = files.photo?.[0] as File;
+          const resumeFile = files.resume?.[0] as File;
+
+          if (photoFile) {
+            photoData = await fs.readFile(photoFile.filepath);
+          }
+          if (resumeFile) {
+            resumeData = await fs.readFile(resumeFile.filepath);
+          }
+        } else {
+          // Handle raw JSON body
+          const body = req.body;
+          if (body.photo) {
+            const photoBase64 = body.photo.replace(/^data:image\/\w+;base64,/, "");
+            photoData = Buffer.from(photoBase64, 'base64');
+          }
+          if (body.resume) {
+            const resumeBase64 = body.resume.replace(/^data:application\/\w+;base64,/, "");
+            resumeData = Buffer.from(resumeBase64, 'base64');
+          }
         }
 
-        // Remove data URI prefix before decoding
-        const base64String = resume.replace(/^data:application\/\w+;base64,/, "");
-        
-        // Convert the base64 string to a Buffer (binary data)
-        const resumeBuffer = Buffer.from(base64String, 'base64');
+        // Validate that at least one file was provided
+        if (!photoData && !resumeData) {
+          return res.status(400).json({ message: "At least one file (photo or resume) is required." });
+        }
 
-        const result = await collection.insertOne({
-          resume: resumeBuffer, // Store as binary data
+        const dataToInsert: { [key: string]: any } = {
           createdAt: new Date(),
-        });
+        };
+
+        if (photoData) {
+          dataToInsert.photo = photoData;
+        }
+
+        if (resumeData) {
+          dataToInsert.resume = resumeData;
+        }
+
+        const result = await collection.insertOne(dataToInsert);
 
         res.status(200).json({
-          message: "Resume uploaded and data saved!",
+          message: "Files uploaded and data saved!",
           dbId: result.insertedId,
         });
       } catch (error) {
         console.error("Upload or DB save failed:", error);
-        res.status(500).json({ message: "Failed to upload file and save data." });
+        res.status(500).json({ message: "Failed to upload files and save data." });
       }
       break;
-
+    
+    // ... (rest of the cases are unchanged)
     case 'GET':
-      // READ operation: Fetch all file records
       try {
         const files = await collection.find({}).toArray();
         res.status(200).json(files);
@@ -63,7 +95,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     case 'PUT':
     case 'PATCH':
-      // UPDATE operation: Update an existing file record
       try {
         const { id } = req.query;
         if (!id || !ObjectId.isValid(id as string)) {
@@ -89,7 +120,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       break;
       
     case 'DELETE':
-      // DELETE operation: Delete a file record by ID
       try {
         const { id } = req.query;
         if (!id || !ObjectId.isValid(id as string)) {
