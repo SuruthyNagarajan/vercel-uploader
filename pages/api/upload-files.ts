@@ -17,39 +17,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   switch (req.method) {
     case 'POST':
-      // CREATE operation: Upload and save new files
       const form = formidable({});
       try {
         const [fields, files] = await form.parse(req) as [any, any];
 
-        const photoFile = files.photo?.[0] as File;
         const resumeFile = files.resume?.[0] as File;
 
-        if (!photoFile || !resumeFile) {
-          return res.status(400).json({ message: "Both photo and resume files are required." });
+        if (!resumeFile) {
+          return res.status(400).json({ message: "Resume file is required." });
         }
 
-        // Read file content from the temporary file path
-        const photoBuffer = await fs.readFile(photoFile.filepath);
         const resumeBuffer = await fs.readFile(resumeFile.filepath);
-
-        // Convert the Buffer to a base64 string
-        const photoBase64 = photoBuffer.toString('base64');
         const resumeBase64 = resumeBuffer.toString('base64');
 
         const result = await collection.insertOne({
-          photoBase64: photoBase64,
           resumeBase64: resumeBase64,
           createdAt: new Date(),
         });
 
         res.status(200).json({
-          message: "Files uploaded and data saved!",
+          message: "Resume uploaded and data saved!",
           dbId: result.insertedId,
         });
       } catch (error) {
         console.error("Upload or DB save failed:", error);
-        res.status(500).json({ message: "Failed to upload files and save data." });
+        res.status(500).json({ message: "Failed to upload file and save data." });
       }
       break;
 
