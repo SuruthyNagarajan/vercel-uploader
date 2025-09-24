@@ -1,12 +1,16 @@
-import formidable, { File } from "formidable";
 import clientPromise from "../../lib/mongodb";
 import { NextApiRequest, NextApiResponse } from "next";
-import fs from 'fs/promises';
 import { ObjectId } from 'mongodb';
+import { Buffer } from 'buffer';
 
 export const config = {
   api: {
-    bodyParser: false,
+    // Note: bodyParser is true by default in Next.js, 
+    // so removing it from config is a valid way to enable it.
+    // Explicitly enabling it:
+    // bodyParser: {
+    //   sizeLimit: '4mb', // Optional: configure size limit if needed
+    // },
   },
 };
 
@@ -17,21 +21,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   switch (req.method) {
     case 'POST':
-      const form = formidable({});
+      // The API now expects a JSON body with a 'resume' field
       try {
-        const [fields, files] = await form.parse(req) as [any, any];
+        const { resume } = req.body;
 
-        const resumeFile = files.resume?.[0] as File;
-
-        if (!resumeFile) {
+        if (!resume) {
           return res.status(400).json({ message: "Resume file is required." });
         }
 
-        const resumeBuffer = await fs.readFile(resumeFile.filepath);
-        const resumeBase64 = resumeBuffer.toString('base64');
+        // Remove data URI prefix before decoding
+        const base64String = resume.replace(/^data:application\/\w+;base64,/, "");
+        
+        // Convert the base64 string to a Buffer (binary data)
+        const resumeBuffer = Buffer.from(base64String, 'base64');
 
         const result = await collection.insertOne({
-          resumeBase64: resumeBase64,
+          resume: resumeBuffer, // Store as binary data
           createdAt: new Date(),
         });
 
