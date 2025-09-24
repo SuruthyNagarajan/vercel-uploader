@@ -7,9 +7,38 @@ import { Buffer } from 'buffer';
 
 export const config = {
   api: {
-    bodyParser: false, // Keep this for formidable to work
+    // This is crucial. We disable the default body parser so that formidable
+    // can handle 'multipart/form-data' requests.
+    bodyParser: false,
   },
 };
+
+// Helper function to manually parse a JSON body from a request stream.
+// This is necessary because bodyParser is disabled for all requests.
+function parseJsonBody(req: NextApiRequest): Promise<any> {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk.toString();
+    });
+    req.on('end', () => {
+      try {
+        if (body === '') {
+          // Resolve with an empty object if there's no body content
+          resolve({});
+        } else {
+          // Parse the full JSON string and resolve
+          resolve(JSON.parse(body));
+        }
+      } catch (e) {
+        reject(new Error("Invalid JSON body."));
+      }
+    });
+    req.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const client = await clientPromise;
@@ -23,11 +52,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       try {
         const contentType = req.headers['content-type'] || '';
         const isFormData = contentType.includes('multipart/form-data');
+        const isJson = contentType.includes('application/json');
 
         let photoData: Buffer | null = null;
         let resumeData: Buffer | null = null;
-
+        
         if (isFormData) {
+          // Case 1: Handle multipart/form-data (used by your webpage)
           const form = formidable({});
           const [fields, files] = await form.parse(req) as [any, any];
 
@@ -40,9 +71,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           if (resumeFile) {
             resumeData = await fs.readFile(resumeFile.filepath);
           }
-        } else {
-          // Handle raw JSON body
-          const body = req.body;
+        } else if (isJson) {
+          // Case 2: Handle raw JSON body (used by your Postman request)
+          const body = await parseJsonBody(req);
+          
           if (body.photo) {
             const photoBase64 = body.photo.replace(/^data:image\/\w+;base64,/, "");
             try {
@@ -59,13 +91,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               return res.status(400).json({ message: "Invalid Base64 string for resume." });
             }
           }
+        } else {
+          // Handle unrecognized Content-Type
+          return res.status(415).json({ message: `Unsupported Content-Type: ${contentType}` });
         }
 
+        // --- Common logic for both cases starts here ---
         if (!photoData && !resumeData) {
           return res.status(400).json({ message: "At least one file (photo or resume) is required." });
         }
         
-        // Check file sizes
+        // Check file sizes against MongoDB's 16MB limit
         if (photoData && photoData.length > MAX_MONGO_SIZE) {
           return res.status(413).json({ message: "Photo file size exceeds the 16 MB limit." });
         }
