@@ -16,18 +16,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const db = client.db("image-uploader-db");
   const collection = db.collection("uploads");
 
+  const MAX_MONGO_SIZE = 16 * 1024 * 1024; // 16 MB in bytes
+
   switch (req.method) {
     case 'POST':
       try {
-        // First, check if the Content-Type is multipart/form-data
         const contentType = req.headers['content-type'] || '';
         const isFormData = contentType.includes('multipart/form-data');
 
-        let photoData: string | Buffer | null = null;
-        let resumeData: string | Buffer | null = null;
+        let photoData: Buffer | null = null;
+        let resumeData: Buffer | null = null;
 
         if (isFormData) {
-          // Handle form-data upload using formidable
           const form = formidable({});
           const [fields, files] = await form.parse(req) as [any, any];
 
@@ -45,17 +45,32 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           const body = req.body;
           if (body.photo) {
             const photoBase64 = body.photo.replace(/^data:image\/\w+;base64,/, "");
-            photoData = Buffer.from(photoBase64, 'base64');
+            try {
+              photoData = Buffer.from(photoBase64, 'base64');
+            } catch (e) {
+              return res.status(400).json({ message: "Invalid Base64 string for photo." });
+            }
           }
           if (body.resume) {
             const resumeBase64 = body.resume.replace(/^data:application\/\w+;base64,/, "");
-            resumeData = Buffer.from(resumeBase64, 'base64');
+            try {
+              resumeData = Buffer.from(resumeBase64, 'base64');
+            } catch (e) {
+              return res.status(400).json({ message: "Invalid Base64 string for resume." });
+            }
           }
         }
 
-        // Validate that at least one file was provided
         if (!photoData && !resumeData) {
           return res.status(400).json({ message: "At least one file (photo or resume) is required." });
+        }
+        
+        // Check file sizes
+        if (photoData && photoData.length > MAX_MONGO_SIZE) {
+          return res.status(413).json({ message: "Photo file size exceeds the 16 MB limit." });
+        }
+        if (resumeData && resumeData.length > MAX_MONGO_SIZE) {
+          return res.status(413).json({ message: "Resume file size exceeds the 16 MB limit." });
         }
 
         const dataToInsert: { [key: string]: any } = {
@@ -65,7 +80,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         if (photoData) {
           dataToInsert.photo = photoData;
         }
-
         if (resumeData) {
           dataToInsert.resume = resumeData;
         }
