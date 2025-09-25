@@ -11,7 +11,6 @@ export const config = {
   },
 };
 
-// Helper function to parse JSON body, since bodyParser is disabled
 function parseJsonBody(req: NextApiRequest): Promise<any> {
   return new Promise((resolve, reject) => {
     let body = '';
