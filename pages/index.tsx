@@ -1,132 +1,98 @@
 import { useState } from 'react';
 import axios from 'axios';
 
+import type { ChangeEvent } from 'react';
+
 export default function Home() {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
-  const [message, setMessage] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setPhotoFile(e.target.files[0]);
+  const onPhotoSelect = (event: ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files?.length) {
+      setPhotoFile(event.target.files[0]);
     }
   };
 
-  const handleResumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setResumeFile(e.target.files[0]);
+  const onResumeSelect = (event: ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files?.length) {
+      setResumeFile(event.target.files[0]);
     }
   };
 
-  const handleUpload = async () => {
-    if (!photoFile || !resumeFile) {
-      setMessage('Please select both a photo and a resume!');
+  const onFormSubmit = async () => {
+    if (!photoFile && !resumeFile) {
+      setStatusMessage('Please select a photo or a resume to proceed.');
       return;
     }
 
-    const formData = new FormData();
-    formData.append('photo', photoFile);
-    formData.append('resume', resumeFile);
+    const payload = new FormData();
+    if (photoFile) {
+      payload.append('profilePhoto', photoFile);
+    }
+    if (resumeFile) {
+      payload.append('resumeDocument', resumeFile);
+    }
 
     try {
-      setMessage('Uploading...');
-      const response = await axios.post('/api/upload-files', formData, {
+      setStatusMessage('Uploading...');
+      const response = await axios.post('/api/upload-files', payload, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
       });
-      setMessage(`Success! ${response.data.message}`);
+      setStatusMessage('Success! Files uploaded successfully.');
     } catch (error) {
-      setMessage('Upload failed.');
-      console.error(error);
+      setStatusMessage('Upload failed. Please try again.');
+      console.error('File upload failed:', error);
     }
   };
 
   return (
-    <div style={{
-      fontFamily: 'system-ui, sans-serif',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: '100vh',
-      backgroundColor: '#f0f4f8',
-      color: '#333'
-    }}>
-      <div style={{
-        backgroundColor: '#fff',
-        padding: '40px',
-        borderRadius: '12px',
-        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)',
-        textAlign: 'center'
-      }}>
-        <h1 style={{
-          fontSize: '2.5rem',
-          marginBottom: '2rem',
-          color: '#0070f3'
-        }}>File Uploader</h1>
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '20px',
-          marginBottom: '20px',
-          textAlign: 'left'
-        }}>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 text-gray-800 p-4">
+      <div className="bg-white p-10 rounded-xl shadow-2xl w-full max-w-lg">
+        <h1 className="text-3xl font-extrabold text-center mb-6 text-blue-600">
+          File Submission Portal
+        </h1>
+
+        <div className="space-y-6 mb-6">
           <div>
-            <label style={{
-              display: 'block',
-              marginBottom: '8px',
-              fontWeight: 'bold'
-            }}>
-              Upload Profile Photo (PNG/JPG):
+            <label className="block text-sm font-medium text-gray-700">
+              Profile Photo (.png, .jpg, .jpeg)
               <input 
                 type="file" 
-                onChange={handlePhotoChange} 
+                onChange={onPhotoSelect} 
                 accept=".png, .jpg, .jpeg" 
-                style={{ marginTop: '5px' }}
+                className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
               />
             </label>
           </div>
+
           <div>
-            <label style={{
-              display: 'block',
-              marginBottom: '8px',
-              fontWeight: 'bold'
-            }}>
-              Upload Resume (PDF):
+            <label className="block text-sm font-medium text-gray-700">
+              Resume (.pdf)
               <input 
                 type="file" 
-                onChange={handleResumeChange} 
+                onChange={onResumeSelect} 
                 accept=".pdf" 
-                style={{ marginTop: '5px' }}
+                className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
               />
             </label>
           </div>
         </div>
+
         <button 
-          onClick={handleUpload} 
-          style={{
-            backgroundColor: '#0070f3',
-            color: '#fff',
-            border: 'none',
-            padding: '12px 24px',
-            fontSize: '1rem',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontWeight: 'bold',
-            transition: 'background-color 0.3s ease'
-          }}
-          onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#005bb5'}
-          onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#0070f3'}
+          onClick={onFormSubmit} 
+          className="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg transition-colors duration-300 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
         >
-          Upload Files
+          Submit Files
         </button>
-        <p style={{
-          marginTop: '20px',
-          color: message.startsWith('Success') ? 'green' : 'red'
-        }}>
-          {message}
-        </p>
+
+        {statusMessage && (
+          <p className={`mt-4 text-center font-medium ${statusMessage.startsWith('Success') ? 'text-green-600' : 'text-red-600'}`}>
+            {statusMessage}
+          </p>
+        )}
       </div>
     </div>
   );
