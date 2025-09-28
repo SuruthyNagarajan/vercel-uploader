@@ -1,22 +1,16 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import clientPromise from '../../lib/mongodb';
 import { ObjectId } from 'mongodb';
-import formidable, { File, IncomingForm } from 'formidable';
+import formidable, { File } from 'formidable';
 import { promises as fs } from 'fs';
 import { Buffer } from 'buffer';
 
-// This is crucial: Disables the default Next.js body parser, allowing formidable to handle the stream
 export const config = {
     api: {
         bodyParser: false,
     },
 };
 
-/**
- * Parses the request body as JSON, used when Content-Type is application/json.
- * @param req The NextApiRequest object.
- * @returns A promise that resolves to the parsed JSON body.
- */
 function parseJsonBody(req: NextApiRequest): Promise<any> {
     return new Promise((resolve, reject) => {
         let body = "";
@@ -34,23 +28,16 @@ function parseJsonBody(req: NextApiRequest): Promise<any> {
     });
 }
 
-/**
- * Main API Handler for File Operations (CRUD)
- */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     const client = await clientPromise;
     const db = client.db('image-uploader-db');
     const collection = db.collection('uploads');
 
-    // Set allowed methods for the 405 response
     res.setHeader('Allow', ['GET', 'POST', 'PUT', 'DELETE']);
 
     try {
         switch (req.method) {
             case 'POST': {
-                // -----------------------------------------------------------
-                // 1. CREATE/UPLOAD (POST) - Supports multipart/form-data AND application/json
-                // -----------------------------------------------------------
                 const contentType = req.headers["content-type"] || "";
                 const isFormData = contentType.includes("multipart/form-data");
                 const isJson = contentType.includes("application/json");
@@ -60,9 +47,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
                 if (isFormData) {
                     const form = formidable({});
-                    // Note: formidable.parse(req) returns [fields, files]
                     const [fields, files] = await new Promise<[any, any]>((resolve, reject) => {
-                         form.parse(req, (err, fields, files) => {
+                        form.parse(req, (err, fields, files) => {
                             if (err) return reject(err);
                             resolve([fields, files]);
                         });
@@ -73,17 +59,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
                     if (photoFile) {
                         photoData = await fs.readFile(photoFile.filepath);
-                        // Clean up temp file
-                        await fs.unlink(photoFile.filepath); 
+                        await fs.unlink(photoFile.filepath);
                     }
                     if (resumeFile) {
                         resumeData = await fs.readFile(resumeFile.filepath);
-                        // Clean up temp file
                         await fs.unlink(resumeFile.filepath);
                     }
                 } else if (isJson) {
                     const body = await parseJsonBody(req);
-                    // Assuming JSON body contains Base64 strings
                     if (body.photo) {
                         const photoBase64 = body.photo.replace(/^data:image\/\w+;base64,/, "");
                         photoData = Buffer.from(photoBase64, "base64");
@@ -100,7 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                     return res.status(400).json({ message: "At least one file (photo or resume) is required." });
                 }
 
-                const MAX_MONGO_SIZE = 16 * 1024 * 1024; // 16 MB
+                const MAX_MONGO_SIZE = 16 * 1024 * 1024;
                 if (photoData && photoData.length > MAX_MONGO_SIZE) {
                     return res.status(413).json({ message: "Photo file size exceeds the 16 MB limit." });
                 }
@@ -109,7 +92,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
                 }
 
                 const dataToInsert: { [key: string]: any } = { createdAt: new Date() };
-                // Store as Base64 strings (Buffers are fine too, but Base64 is often easier for retrieval)
                 if (photoData) dataToInsert.photoBase64 = photoData.toString('base64');
                 if (resumeData) dataToInsert.resumeBase64 = resumeData.toString('base64');
 
@@ -122,30 +104,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
 
             case 'GET': {
-                // -----------------------------------------------------------
-                // 2. READ (GET)
-                // -----------------------------------------------------------
                 const uploads = await collection.find({}).project({ photoBase64: 0, resumeBase64: 0 }).toArray();
-                
-                // If you want to return ALL data including the large Base64 files:
-                // const uploads = await collection.find({}).toArray();
-
                 return res.status(200).json(uploads);
             }
 
             case 'DELETE': {
-                // -----------------------------------------------------------
-                // 3. DELETE
-                // -----------------------------------------------------------
                 const { id } = req.query;
 
                 if (!id || typeof id !== 'string') {
                     return res.status(400).json({ message: 'Missing or invalid file ID for deletion.' });
                 }
 
-                const result = await collection.deleteOne({
-                    _id: new ObjectId(id),
-                });
+                const result = await collection.deleteOne({ _id: new ObjectId(id) });
 
                 if (result.deletedCount === 0) {
                     return res.status(404).json({ message: 'File not found or already deleted.' });
@@ -158,16 +128,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             }
 
             case 'PUT': {
-                // -----------------------------------------------------------
-                // 4. UPDATE (PUT) - Placeholder
-                // -----------------------------------------------------------
                 return res.status(501).json({ message: 'PUT method is not implemented.' });
             }
 
             default:
-                // -----------------------------------------------------------
-                // 5. METHOD NOT ALLOWED (405)
-                // -----------------------------------------------------------
                 res.status(405).json({ message: `Method ${req.method} Not Allowed` });
                 break;
         }
